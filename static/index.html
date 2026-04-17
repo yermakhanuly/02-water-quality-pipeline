@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AquaBot Water Quality Monitor</title>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0b1120;
+      --surface:  #111827;
+      --elevated: #1e293b;
+      --border:   #2d3a50;
+      --text:     #e2e8f0;
+      --muted:    #94a3b8;
+      --accent:   #38bdf8;
+      --temp:     #60a5fa;
+      --do:       #34d399;
+      --danger:   #f87171;
+      --warn:     #fb923c;
+      --radius:   8px;
+      --font-sans: 'Inter', system-ui, sans-serif;
+      --font-mono: 'JetBrains Mono', 'Fira Mono', monospace;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      font-size: 14px;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    header .logo {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: var(--accent);
+    }
+    header .subtitle {
+      color: var(--muted);
+      font-size: 13px;
+    }
+    header .badge {
+      margin-left: auto;
+      background: var(--elevated);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 3px 12px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    header .badge span { color: var(--accent); font-weight: 600; }
+
+    /* ── Main layout ── */
+    main {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    /* ── Controls bar ── */
+    .controls {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .controls label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .controls input[type="date"] {
+      background: var(--elevated);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 5px 10px;
+      font-size: 13px;
+      font-family: inherit;
+      cursor: pointer;
+    }
+    .controls input[type="date"]:focus { outline: 2px solid var(--accent); }
+    .btn {
+      padding: 6px 16px;
+      border-radius: 6px;
+      border: none;
+      font-size: 13px;
+      font-family: inherit;
+      cursor: pointer;
+      font-weight: 500;
+      transition: opacity 0.15s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn:active { opacity: 0.7; }
+    .btn-primary { background: var(--accent); color: #0b1120; }
+    .btn-secondary { background: var(--elevated); color: var(--text); border: 1px solid var(--border); }
+    .btn-export { background: var(--elevated); color: var(--do); border: 1px solid var(--border); text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+    .controls-sep { width: 1px; height: 24px; background: var(--border); }
+
+    /* ── Card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .card-header {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .card-title {
+      font-weight: 600;
+      font-size: 14px;
+      letter-spacing: 0.01em;
+    }
+    .card-meta { color: var(--muted); font-size: 12px; }
+    .card-body { padding: 16px 20px; }
+
+    /* ── Chart ── */
+    #chart { width: 100%; height: 420px; }
+
+    /* ── Two-column row ── */
+    .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 900px) { .row-2 { grid-template-columns: 1fr; } }
+
+    /* ── Stats table ── */
+    .stats-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .stats-table th {
+      color: var(--muted);
+      font-weight: 500;
+      text-align: right;
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .stats-table th:first-child { text-align: left; }
+    .stats-table td {
+      padding: 7px 10px;
+      border-bottom: 1px solid var(--border);
+      text-align: right;
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+    .stats-table td:first-child { text-align: left; font-family: var(--font-sans); font-size: 13px; }
+    .stats-table tr:last-child td { border-bottom: none; }
+    .stats-table tr:hover td { background: var(--elevated); }
+
+    /* ── Anomaly breakdown ── */
+    .breakdown { display: flex; flex-direction: column; gap: 8px; }
+    .breakdown-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .breakdown-label { color: var(--muted); font-size: 12px; }
+    .breakdown-bar-wrap { flex: 1; background: var(--elevated); border-radius: 3px; height: 6px; }
+    .breakdown-bar { height: 6px; border-radius: 3px; background: var(--accent); }
+    .breakdown-count { font-family: var(--font-mono); font-size: 12px; width: 28px; text-align: right; }
+
+    /* ── Anomaly list ── */
+    .anomaly-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .anomaly-table th {
+      color: var(--muted);
+      font-weight: 500;
+      text-align: left;
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+    }
+    .anomaly-table td {
+      padding: 7px 10px;
+      border-bottom: 1px solid var(--border);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      vertical-align: top;
+    }
+    .anomaly-table tr:last-child td { border-bottom: none; }
+    .anomaly-table tr:hover td { background: var(--elevated); }
+    .method-badge {
+      display: inline-block;
+      padding: 1px 7px;
+      border-radius: 10px;
+      font-size: 10px;
+      font-family: var(--font-sans);
+      white-space: nowrap;
+    }
+    .m-range   { background: #7c3aed22; color: #a78bfa; border: 1px solid #7c3aed44; }
+    .m-iqr     { background: #0369a122; color: #38bdf8; border: 1px solid #0369a144; }
+    .m-roc     { background: #b4530022; color: #fb923c; border: 1px solid #b4530044; }
+    .m-spatial { background: #16653122; color: #34d399; border: 1px solid #16653144; }
+
+    /* ── Pagination ── */
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 12px 20px;
+      border-top: 1px solid var(--border);
+    }
+    .pagination span { color: var(--muted); font-size: 12px; }
+
+    /* ── GPS Map ── */
+    #map { width: 100%; height: 380px; }
+
+    /* ── Loading / error states ── */
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 200px;
+      color: var(--muted);
+      font-size: 13px;
+      gap: 10px;
+    }
+    .spinner {
+      width: 18px; height: 18px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .error-msg { color: var(--danger); text-align: center; padding: 16px; font-size: 13px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">&#9875; AquaBot</div>
+  <div class="subtitle">Water Quality Monitor — San Diego Bay</div>
+  <div class="badge" id="anomalyBadge">Loading…</div>
+</header>
+
+<main>
+
+  <!-- Controls -->
+  <div class="controls">
+    <label>Start
+      <input type="date" id="startDate" />
+    </label>
+    <label>End
+      <input type="date" id="endDate" />
+    </label>
+    <button class="btn btn-primary" id="applyBtn">Apply Filter</button>
+    <button class="btn btn-secondary" id="resetBtn">Reset</button>
+    <div class="controls-sep"></div>
+    <a class="btn btn-export" href="/data/export?clean=true" download>
+      &#8659; Export Clean CSV
+    </a>
+  </div>
+
+  <!-- Time-series chart -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Time-Series: Temperature &amp; Dissolved Oxygen</span>
+      <span class="card-meta" id="chartMeta">—</span>
+    </div>
+    <div id="chart"><div class="loading"><div class="spinner"></div> Loading chart…</div></div>
+  </div>
+
+  <!-- Summary + breakdown -->
+  <div class="row-2">
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Sensor Statistics</span>
+        <span class="card-meta" id="totalReadings">—</span>
+      </div>
+      <div class="card-body">
+        <div id="statsTable"><div class="loading"><div class="spinner"></div></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Anomaly Breakdown</span>
+        <span class="card-meta" id="totalAnomalies">—</span>
+      </div>
+      <div class="card-body">
+        <div id="breakdownSection"><div class="loading"><div class="spinner"></div></div></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- GPS map -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">AquaBot GPS Path</span>
+      <span class="card-meta">Red markers = anomalous positions</span>
+    </div>
+    <div id="map"><div class="loading"><div class="spinner"></div> Loading map…</div></div>
+  </div>
+
+  <!-- Anomaly list -->
+  <div class="card" id="anomalyCard">
+    <div class="card-header">
+      <span class="card-title">Anomaly Records</span>
+      <span class="card-meta" id="anomalyListMeta">—</span>
+    </div>
+    <div id="anomalyListBody">
+      <div class="loading"><div class="spinner"></div></div>
+    </div>
+    <div class="pagination" id="pagination" style="display:none;">
+      <span id="pageInfo"></span>
+      <button class="btn btn-secondary" id="prevBtn">&larr; Prev</button>
+      <button class="btn btn-secondary" id="nextBtn">Next &rarr;</button>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ============================================================
+// State
+// ============================================================
+let allData      = [];   // full dataset from /data
+let allAnomalies = [];   // full anomaly list from /anomalies
+let summary      = null; // /summary response
+let currentPage  = 0;
+const PAGE_SIZE  = 20;
+
+// ============================================================
+// API helpers
+// ============================================================
+async function api(path) {
+  const res = await fetch(path);
+  if (!res.ok) throw new Error(`${path} → HTTP ${res.status}`);
+  return res.json();
+}
+
+function isoFromDate(d) { return d ? d + 'T00:00:00Z' : null; }
+function isoToDate(iso) { return iso ? iso.slice(0, 10) : ''; }
+
+// ============================================================
+// Chart rendering
+// ============================================================
+function renderChart(data, anomalies) {
+  const ts        = data.map(d => d.timestamp);
+  const temps     = data.map(d => d.water_temp_c);
+  const doVals    = data.map(d => d.dissolved_oxygen_mgl);
+
+  const anomalyRowSet = new Set(anomalies.map(a => a.row_index));
+  const tempAnomalyFields = new Set(['water_temp_c']);
+  const doAnomalyFields   = new Set(['dissolved_oxygen_mgl']);
+
+  // Anomaly points by field category
+  const tempAnoms = anomalies.filter(a => tempAnomalyFields.has(a.field));
+  const doAnoms   = anomalies.filter(a => doAnomalyFields.has(a.field));
+  const otherAnoms = anomalies.filter(
+    a => !tempAnomalyFields.has(a.field) && !doAnomalyFields.has(a.field) && a.field !== 'lat/lon'
+  );
+
+  // For 'other' anomalies, find corresponding temp value to plot on the temp axis
+  const dataByRow = {};
+  data.forEach(d => { dataByRow[d.row_index] = d; });
+
+  const traceTempLine = {
+    x: ts, y: temps,
+    type: 'scatter', mode: 'lines',
+    name: 'Temp (°C)',
+    line: { color: '#60a5fa', width: 1.5 },
+    hovertemplate: '%{x}<br>Temp: %{y:.2f}°C<extra></extra>',
+  };
+
+  const traceDoLine = {
+    x: ts, y: doVals,
+    type: 'scatter', mode: 'lines',
+    name: 'DO (mg/L)',
+    yaxis: 'y2',
+    line: { color: '#34d399', width: 1.5 },
+    hovertemplate: '%{x}<br>DO: %{y:.2f} mg/L<extra></extra>',
+  };
+
+  const traceTempAnoms = {
+    x: tempAnoms.map(a => a.timestamp),
+    y: tempAnoms.map(a => a.value),
+    type: 'scatter', mode: 'markers',
+    name: 'Temp anomaly',
+    marker: { symbol: 'x', size: 11, color: '#f87171', line: { width: 2, color: '#f87171' } },
+    hovertemplate: '%{x}<br>Value: %{y}<br>' +
+      tempAnoms.map(a => a.detail).join('<br>') + '<extra>range_anomaly</extra>',
+    customdata: tempAnoms.map(a => a.detail),
+    hovertemplate: '%{x}<br>%{customdata}<extra>anomaly</extra>',
+  };
+
+  const traceDoAnoms = {
+    x: doAnoms.map(a => a.timestamp),
+    y: doAnoms.map(a => a.value),
+    type: 'scatter', mode: 'markers',
+    name: 'DO anomaly',
+    yaxis: 'y2',
+    marker: { symbol: 'x', size: 11, color: '#fb923c', line: { width: 2, color: '#fb923c' } },
+    customdata: doAnoms.map(a => a.detail),
+    hovertemplate: '%{x}<br>%{customdata}<extra>anomaly</extra>',
+  };
+
+  // Other anomalies: plot on temp axis at the corresponding temp value
+  const otherAnomsWithTemp = otherAnoms.map(a => ({
+    ...a,
+    tempVal: dataByRow[a.row_index] ? dataByRow[a.row_index].water_temp_c : 0,
+  }));
+
+  const traceOtherAnoms = {
+    x: otherAnomsWithTemp.map(a => a.timestamp),
+    y: otherAnomsWithTemp.map(a => a.tempVal),
+    type: 'scatter', mode: 'markers',
+    name: 'Other anomaly',
+    marker: { symbol: 'diamond', size: 9, color: '#a78bfa', line: { width: 1.5, color: '#a78bfa' } },
+    customdata: otherAnomsWithTemp.map(a => `[${a.field}] ${a.detail}`),
+    hovertemplate: '%{x}<br>%{customdata}<extra>anomaly</extra>',
+  };
+
+  const layout = {
+    paper_bgcolor: 'transparent',
+    plot_bgcolor:  '#0f172a',
+    margin: { t: 10, r: 60, b: 60, l: 55 },
+    legend: { orientation: 'h', y: -0.18, x: 0, font: { color: '#94a3b8', size: 12 } },
+    xaxis: {
+      color: '#475569', gridcolor: '#1e293b', linecolor: '#2d3a50',
+      rangeslider: { bgcolor: '#111827', bordercolor: '#2d3a50', thickness: 0.06 },
+      rangeselector: {
+        bgcolor: '#1e293b', bordercolor: '#2d3a50', activecolor: '#38bdf8',
+        font: { color: '#94a3b8', size: 11 },
+        buttons: [
+          { count: 7,  step: 'day',   stepmode: 'backward', label: '1W' },
+          { count: 14, step: 'day',   stepmode: 'backward', label: '2W' },
+          { count: 1,  step: 'month', stepmode: 'backward', label: '1M' },
+          { step: 'all', label: 'All' },
+        ],
+      },
+    },
+    yaxis:  {
+      title: { text: 'Temperature (°C)', font: { color: '#60a5fa', size: 12 } },
+      color: '#60a5fa', gridcolor: '#1e293b', linecolor: '#2d3a50', zerolinecolor: '#2d3a50',
+    },
+    yaxis2: {
+      title: { text: 'Dissolved Oxygen (mg/L)', font: { color: '#34d399', size: 12 } },
+      color: '#34d399', overlaying: 'y', side: 'right',
+      gridcolor: 'transparent', linecolor: '#2d3a50',
+    },
+    hoverlabel: { bgcolor: '#1e293b', bordercolor: '#2d3a50', font: { color: '#e2e8f0' } },
+  };
+
+  const config = { responsive: true, displayModeBar: true, displaylogo: false,
+    modeBarButtonsToRemove: ['toImage', 'sendDataToCloud'] };
+
+  Plotly.newPlot('chart',
+    [traceTempLine, traceDoLine, traceTempAnoms, traceDoAnoms, traceOtherAnoms],
+    layout, config
+  );
+
+  // Update meta
+  if (data.length > 0) {
+    document.getElementById('chartMeta').textContent =
+      `${data.length} readings  ·  ${data[0].timestamp.slice(0,10)} → ${data[data.length-1].timestamp.slice(0,10)}`;
+  }
+}
+
+// ============================================================
+// GPS Map
+// ============================================================
+function renderMap(data, anomalies) {
+  const anomalyRowSet = new Set(anomalies.map(a => a.row_index));
+
+  const normal = data.filter(d => !anomalyRowSet.has(d.row_index));
+  const flagged = data.filter(d =>  anomalyRowSet.has(d.row_index));
+
+  const tracePath = {
+    type: 'scattermapbox',
+    lat:  normal.map(d => d.lat),
+    lon:  normal.map(d => d.lon),
+    mode: 'lines+markers',
+    name: 'Normal',
+    line:   { color: '#38bdf8', width: 1 },
+    marker: { size: 3, color: '#38bdf8' },
+    hovertemplate: 'lat: %{lat:.5f}<br>lon: %{lon:.5f}<extra>Normal</extra>',
+  };
+
+  const traceFlagged = {
+    type: 'scattermapbox',
+    lat:  flagged.map(d => d.lat),
+    lon:  flagged.map(d => d.lon),
+    mode: 'markers',
+    name: 'Anomaly',
+    marker: { size: 10, color: '#f87171', symbol: 'circle' },
+    hovertemplate: 'lat: %{lat:.5f}<br>lon: %{lon:.5f}<extra>Anomaly</extra>',
+  };
+
+  const layout = {
+    paper_bgcolor: 'transparent',
+    margin: { t: 0, r: 0, b: 0, l: 0 },
+    mapbox: {
+      style: 'open-street-map',
+      center: { lat: 32.685, lon: -117.170 },
+      zoom: 12,
+    },
+    legend: { orientation: 'h', y: 0.02, x: 0.01, font: { color: '#e2e8f0', size: 12 },
+      bgcolor: '#111827cc', bordercolor: '#2d3a50' },
+  };
+
+  Plotly.newPlot('map', [tracePath, traceFlagged], layout, { responsive: true, displaylogo: false });
+}
+
+// ============================================================
+// Summary table
+// ============================================================
+const SENSOR_LABELS = {
+  water_temp_c:         'Water Temp (°C)',
+  dissolved_oxygen_mgl: 'Dissolved O₂ (mg/L)',
+  ph:                   'pH',
+  turbidity_ntu:        'Turbidity (NTU)',
+  salinity_ppt:         'Salinity (ppt)',
+  depth_m:              'Depth (m)',
+  battery_pct:          'Battery (%)',
+};
+
+function renderSummary(summary) {
+  // Header badge
+  document.getElementById('anomalyBadge').innerHTML =
+    `<span>${summary.total_anomalies}</span> anomalies / ${summary.total_readings} readings`;
+  document.getElementById('totalReadings').textContent =
+    `${summary.total_readings} total readings`;
+  document.getElementById('totalAnomalies').textContent =
+    `${summary.total_anomalies} anomalous rows`;
+
+  // Stats table
+  const cols = Object.keys(summary.sensor_stats);
+  let rows = cols.map(col => {
+    const s = summary.sensor_stats[col];
+    const label = SENSOR_LABELS[col] || col;
+    return `<tr>
+      <td>${label}</td>
+      <td>${s.mean.toFixed(3)}</td>
+      <td>${s.min.toFixed(3)}</td>
+      <td>${s.max.toFixed(3)}</td>
+      <td>${s.std.toFixed(3)}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('statsTable').innerHTML = `
+    <table class="stats-table">
+      <thead><tr>
+        <th>Sensor</th><th>Mean</th><th>Min</th><th>Max</th><th>Std</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+
+  // Anomaly breakdown
+  const byMethod = summary.anomaly_breakdown.by_method;
+  const byField  = summary.anomaly_breakdown.by_field;
+  const maxCount = Math.max(...Object.values(byMethod), ...Object.values(byField), 1);
+
+  const METHOD_LABELS = {
+    range_validation: 'Range Validation',
+    iqr_statistical:  'IQR Statistical',
+    rate_of_change:   'Rate of Change',
+    spatial_validation: 'Spatial',
+  };
+
+  const methodRows = Object.entries(byMethod).map(([k, v]) => `
+    <div class="breakdown-item">
+      <span class="breakdown-label">${METHOD_LABELS[k] || k}</span>
+      <div class="breakdown-bar-wrap">
+        <div class="breakdown-bar" style="width:${(v/maxCount*100).toFixed(1)}%"></div>
+      </div>
+      <span class="breakdown-count">${v}</span>
+    </div>`).join('');
+
+  const topFields = Object.entries(byField).sort((a,b) => b[1]-a[1]).slice(0, 7);
+  const fieldRows = topFields.map(([k, v]) => `
+    <div class="breakdown-item">
+      <span class="breakdown-label">${SENSOR_LABELS[k] || k}</span>
+      <div class="breakdown-bar-wrap">
+        <div class="breakdown-bar" style="width:${(v/maxCount*100).toFixed(1)}%; background:#fb923c"></div>
+      </div>
+      <span class="breakdown-count">${v}</span>
+    </div>`).join('');
+
+  document.getElementById('breakdownSection').innerHTML = `
+    <div style="margin-bottom:12px;">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px;">By Method</div>
+      <div class="breakdown">${methodRows}</div>
+    </div>
+    <div>
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px;">By Field (top 7)</div>
+      <div class="breakdown">${fieldRows}</div>
+    </div>`;
+}
+
+// ============================================================
+// Anomaly list (paginated)
+// ============================================================
+const METHOD_CLASS = {
+  range_validation:   'm-range',
+  iqr_statistical:    'm-iqr',
+  rate_of_change:     'm-roc',
+  spatial_validation: 'm-spatial',
+};
+
+function renderAnomalyPage() {
+  const start = currentPage * PAGE_SIZE;
+  const page  = allAnomalies.slice(start, start + PAGE_SIZE);
+
+  if (page.length === 0) {
+    document.getElementById('anomalyListBody').innerHTML =
+      '<p style="color:var(--muted);padding:20px;text-align:center">No anomalies found.</p>';
+    document.getElementById('pagination').style.display = 'none';
+    return;
+  }
+
+  const rows = page.map(a => {
+    const badge = `<span class="method-badge ${METHOD_CLASS[a.method] || ''}">${a.method}</span>`;
+    const val = typeof a.value === 'number' ? a.value.toFixed(4) : a.value;
+    return `<tr>
+      <td>${a.row_index}</td>
+      <td>${a.timestamp.replace('T',' ').replace('Z','')}</td>
+      <td style="color:var(--accent)">${a.field}</td>
+      <td style="color:var(--warn)">${val}</td>
+      <td>${badge}</td>
+      <td style="color:var(--muted);max-width:300px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.detail}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('anomalyListBody').innerHTML = `
+    <table class="anomaly-table">
+      <thead><tr>
+        <th>#Row</th><th>Timestamp</th><th>Field</th>
+        <th>Value</th><th>Method</th><th>Detail</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+
+  const totalPages = Math.ceil(allAnomalies.length / PAGE_SIZE);
+  document.getElementById('pageInfo').textContent =
+    `Page ${currentPage + 1} of ${totalPages}  ·  ${allAnomalies.length} records`;
+  document.getElementById('anomalyListMeta').textContent =
+    `${allAnomalies.length} records`;
+  document.getElementById('pagination').style.display = 'flex';
+  document.getElementById('prevBtn').disabled = currentPage === 0;
+  document.getElementById('nextBtn').disabled = currentPage >= totalPages - 1;
+}
+
+// ============================================================
+// Initial load
+// ============================================================
+async function loadAll(start, end) {
+  let dataUrl = '/data';
+  if (start || end) {
+    const params = new URLSearchParams();
+    if (start) params.set('start', start);
+    if (end)   params.set('end',   end);
+    dataUrl += '?' + params.toString();
+  }
+
+  try {
+    const [dataResp, anomalyResp, summaryResp] = await Promise.all([
+      api(dataUrl),
+      api('/anomalies'),
+      api('/summary'),
+    ]);
+
+    allData      = dataResp.data;
+    allAnomalies = anomalyResp.anomalies;
+    summary      = summaryResp;
+    currentPage  = 0;
+
+    renderChart(allData, allAnomalies);
+    renderMap(allData, allAnomalies);
+    renderSummary(summary);
+    renderAnomalyPage();
+
+    // Seed date pickers with dataset range if not already set
+    if (!start && !end) {
+      document.getElementById('startDate').value = isoToDate(summary.date_range.start);
+      document.getElementById('endDate').value   = isoToDate(summary.date_range.end);
+    }
+  } catch (err) {
+    console.error(err);
+    document.getElementById('chart').innerHTML =
+      `<div class="error-msg">Failed to load data: ${err.message}</div>`;
+  }
+}
+
+// ============================================================
+// Event listeners
+// ============================================================
+document.getElementById('applyBtn').addEventListener('click', () => {
+  const start = document.getElementById('startDate').value;
+  const end   = document.getElementById('endDate').value;
+  loadAll(isoFromDate(start), isoFromDate(end));
+});
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+  document.getElementById('startDate').value = '';
+  document.getElementById('endDate').value   = '';
+  loadAll(null, null);
+});
+
+document.getElementById('prevBtn').addEventListener('click', () => {
+  if (currentPage > 0) { currentPage--; renderAnomalyPage(); }
+});
+
+document.getElementById('nextBtn').addEventListener('click', () => {
+  const total = Math.ceil(allAnomalies.length / PAGE_SIZE);
+  if (currentPage < total - 1) { currentPage++; renderAnomalyPage(); }
+});
+
+// ============================================================
+// Boot
+// ============================================================
+loadAll(null, null);
+</script>
+</body>
+</html>

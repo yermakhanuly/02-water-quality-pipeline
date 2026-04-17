@@ -1,0 +1,20 @@
+{
+  "note": "This file contains a few known anomalies for you to validate your detection pipeline against. There are more anomalies than these \u2014 finding them all is part of the challenge.",
+  "hints": [
+    {
+      "approximate_row": 800,
+      "field": "dissolved_oxygen_mgl",
+      "issue": "Impossibly low value"
+    },
+    {
+      "approximate_row": 1800,
+      "field": "ph",
+      "issue": "Value far outside seawater range"
+    },
+    {
+      "approximate_row": 3200,
+      "field": "turbidity_ntu",
+      "issue": "Physically impossible negative reading"
+    }
+  ]
+}
